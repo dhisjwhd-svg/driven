@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YUKI + KAYO</title>
+<style>html,body{margin:0;min-height:100%;background:#07070b;color:#f4f4f5;font:15px system-ui}#status{padding:18px;color:#a1a1aa}</style>
+</head>
+<body>
+<div id="status">Loading YUKI + KAYO…</div>
+<script>
+(async function(){
+ const status=document.getElementById('status');
+ try{
+  const response=await fetch('https://raw.githubusercontent.com/dhisjwhd-svg/driven/main/YUKI-moudle.html.html',{cache:'no-store'});
+  if(!response.ok) throw new Error('Could not load the current module ('+response.status+').');
+  let html=await response.text();
+  const oldSeason="function seasonList(s){\n    if(s.seasons && s.seasons.length) return s.seasons;\n    return [{ name:'Season 1', eps: s.eps||[] }];\n  }";
+  const fixedSeason=`function episodeNumber(ep,i){
+    var label=String(ep.label||ep.name||ep.title||'');
+    var m=label.match(/(?:episode|ep|part|ova|special)?\\s*0*(\\d+)/i);
+    return Number(ep.episode||ep.episodeNumber||ep.ep||ep.number||(m&&m[1])||i+1);
+  }
+  function seasonNumber(se,i){
+    var m=String(se.name||se.title||'').match(/season\\s*0*(\\d+)/i);
+    return Number(se.season||se.seasonNumber||se.number||(m&&m[1])||i+1);
+  }
+  function sortEpisodes(eps){
+    return (eps||[]).slice().sort(function(a,b){
+      var sa=Number(a.season||a.seasonNumber||1), sb=Number(b.season||b.seasonNumber||1);
+      return sa-sb || episodeNumber(a,0)-episodeNumber(b,0);
+    });
+  }
+  function seasonList(s){
+    var raw=Array.isArray(s.seasons)?s.seasons.slice():[];
+    var eps=Array.isArray(s.eps)?s.eps.slice():[];
+    if(eps.some(function(e){return e && (e.season!=null || e.seasonNumber!=null);})){
+      var groups={};
+      eps.forEach(function(e,i){
+        var n=Number(e.season||e.seasonNumber||1);
+        if(!groups[n]) groups[n]=[];
+        groups[n].push(e);
+      });
+      Object.keys(groups).forEach(function(n){
+        var existing=raw.find(function(se){return seasonNumber(se,0)===Number(n);});
+        if(existing) existing.eps=(existing.eps||[]).concat(groups[n]);
+        else raw.push({name:'Season '+n,season:Number(n),eps:groups[n]});
+      });
+    } else if(!raw.length){
+      raw=[{name:'Season 1',season:1,eps:eps}];
+    } else if(eps.length){
+      var first=raw.find(function(se){return seasonNumber(se,0)===1;});
+      if(first) first.eps=(first.eps||[]).concat(eps);
+    }
+    var seen={};
+    raw.forEach(function(se,i){
+      se.season=seasonNumber(se,i);
+      se.name=se.name||('Season '+se.season);
+      se.eps=sortEpisodes(se.eps||[]);
+      var unique={};
+      se.eps=se.eps.filter(function(ep,j){
+        var key=String(ep.id||ep.url||ep.embed||ep.label||ep.name||j);
+        if(unique[key]) return false;
+        unique[key]=true; return true;
+      });
+    });
+    raw.sort(function(a,b){return seasonNumber(a,0)-seasonNumber(b,0);});
+    return raw;
+  }`;
+  if(!html.includes(oldSeason)) throw new Error('Season logic changed upstream; refusing an unsafe patch.');
+  html=html.replace(oldSeason,fixedSeason);
+  const oldCurrent="return (se && se.eps) ? se.eps : (cur.eps||[]);";
+  html=html.replace(oldCurrent,"return (se && se.eps) ? sortEpisodes(se.eps) : sortEpisodes(cur.eps||[]);");
+  status.remove();
+  document.open();document.write(html);document.close();
+ }catch(e){status.textContent='YUKI could not load: '+e.message;status.style.color='#fb7185';}
+})();
+</script>
+</body>
+</html>

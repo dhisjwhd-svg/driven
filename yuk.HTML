@@ -3,77 +3,81 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>YUKI + KAYO</title>
-<style>html,body{margin:0;min-height:100%;background:#07070b;color:#f4f4f5;font:15px system-ui}#status{padding:18px;color:#a1a1aa}</style>
+<meta name="color-scheme" content="dark">
+<title>Yuki</title>
+<style>
+html,body{margin:0;min-height:100%;background:#080a10;color:#f5f7ff;font:15px/1.5 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+#status{min-height:100vh;display:grid;place-content:center;text-align:center;gap:12px;color:#c9d0e4}
+#status:before{content:"";width:28px;height:28px;border:2px solid #34394b;border-top-color:#dce3ff;border-radius:50%;animation:spin .7s linear infinite;margin:auto}
+@keyframes spin{to{transform:rotate(360deg)}}
+</style>
 </head>
 <body>
-<div id="status">Loading YUKI + KAYO…</div>
+<div id="status">Loading the latest Yuki module…</div>
 <script>
 (async function(){
  const status=document.getElementById('status');
  try{
   const response=await fetch('https://raw.githubusercontent.com/dhisjwhd-svg/driven/main/YUKI-moudle.html.html',{cache:'no-store'});
-  if(!response.ok) throw new Error('Could not load the current module ('+response.status+').');
+  if(!response.ok)throw new Error('Could not load the source module ('+response.status+').');
   let html=await response.text();
   const oldSeason="function seasonList(s){\n    if(s.seasons && s.seasons.length) return s.seasons;\n    return [{ name:'Season 1', eps: s.eps||[] }];\n  }";
   const fixedSeason=`function episodeNumber(ep,i){
-    var label=String(ep.label||ep.name||ep.title||'');
-    var m=label.match(/(?:episode|ep|part|ova|special)?\\s*0*(\\d+)/i);
-    return Number(ep.episode||ep.episodeNumber||ep.ep||ep.number||(m&&m[1])||i+1);
+    var explicit=Number(ep&&(ep.episode||ep.episodeNumber||ep.ep||ep.number));
+    if(explicit>0)return explicit;
+    var label=[ep&&ep.label,ep&&ep.name,ep&&ep.title].filter(Boolean).join(' ');
+    var m=label.match(/s\\s*\\d+\\s*e\\s*0*(\\d+)/i)||label.match(/(?:episode|ep|part)\\s*0*(\\d+)/i)||label.match(/(?:^|\\D)(\\d{1,3})(?:\\D|$)/);
+    return Number(m&&m[1])||i+1;
   }
   function seasonNumber(se,i){
-    var m=String(se.name||se.title||'').match(/season\\s*0*(\\d+)/i);
-    return Number(se.season||se.seasonNumber||se.number||(m&&m[1])||i+1);
+    var explicit=Number(se&&(se.season||se.seasonNumber||se.number));
+    if(explicit>0)return explicit;
+    var label=String(se&&(se.name||se.title)||'');
+    var m=label.match(/season\\s*0*(\\d+)/i)||label.match(/\\bs\\s*0*(\\d+)\\b/i);
+    return Number(m&&m[1])||i+1;
   }
   function sortEpisodes(eps){
-    return (eps||[]).slice().sort(function(a,b){
-      var sa=Number(a.season||a.seasonNumber||1), sb=Number(b.season||b.seasonNumber||1);
-      return sa-sb || episodeNumber(a,0)-episodeNumber(b,0);
-    });
+    return (eps||[]).map(function(ep,i){return {ep:ep,i:i,n:episodeNumber(ep,i)};})
+      .sort(function(a,b){return a.n-b.n||a.i-b.i;}).map(function(x){return x.ep;});
   }
   function seasonList(s){
-    var raw=Array.isArray(s.seasons)?s.seasons.slice():[];
+    var raw=Array.isArray(s.seasons)?s.seasons.map(function(se){return Object.assign({},se,{eps:(se.eps||[]).slice()});}):[];
     var eps=Array.isArray(s.eps)?s.eps.slice():[];
-    if(eps.some(function(e){return e && (e.season!=null || e.seasonNumber!=null);})){
-      var groups={};
-      eps.forEach(function(e,i){
-        var n=Number(e.season||e.seasonNumber||1);
-        if(!groups[n]) groups[n]=[];
-        groups[n].push(e);
-      });
-      Object.keys(groups).forEach(function(n){
-        var existing=raw.find(function(se){return seasonNumber(se,0)===Number(n);});
-        if(existing) existing.eps=(existing.eps||[]).concat(groups[n]);
-        else raw.push({name:'Season '+n,season:Number(n),eps:groups[n]});
-      });
-    } else if(!raw.length){
-      raw=[{name:'Season 1',season:1,eps:eps}];
-    } else if(eps.length){
-      var first=raw.find(function(se){return seasonNumber(se,0)===1;});
-      if(first) first.eps=(first.eps||[]).concat(eps);
-    }
-    var seen={};
+    var groups={};
+    eps.forEach(function(ep){
+      var label=[ep&&ep.label,ep&&ep.name,ep&&ep.title,ep&&ep.url].filter(Boolean).join(' ');
+      var explicit=Number(ep&&(ep.season||ep.seasonNumber));
+      var match=label.match(/s\\s*0*(\\d+)\\s*e\\s*0*\\d+/i)||label.match(/season\\s*0*(\\d+)/i);
+      var n=explicit||Number(match&&match[1])||1;
+      (groups[n]||(groups[n]=[])).push(ep);
+    });
+    Object.keys(groups).forEach(function(key){
+      var n=Number(key),existing=raw.find(function(se,i){return seasonNumber(se,i)===n;});
+      if(existing) existing.eps=(existing.eps||[]).concat(groups[key]);
+      else raw.push({name:'Season '+n,season:n,eps:groups[key]});
+    });
+    if(!raw.length)raw=[{name:'Season 1',season:1,eps:eps}];
     raw.forEach(function(se,i){
       se.season=seasonNumber(se,i);
       se.name=se.name||('Season '+se.season);
       se.eps=sortEpisodes(se.eps||[]);
-      var unique={};
+      var seen={};
       se.eps=se.eps.filter(function(ep,j){
-        var key=String(ep.id||ep.url||ep.embed||ep.label||ep.name||j);
-        if(unique[key]) return false;
-        unique[key]=true; return true;
+        var key=String(ep&&(ep.id||ep.url||ep.embed||ep.label||ep.name)||j);
+        if(seen[key])return false;
+        seen[key]=true;return true;
       });
     });
-    raw.sort(function(a,b){return seasonNumber(a,0)-seasonNumber(b,0);});
+    raw.sort(function(a,b){return a.season-b.season;});
     return raw;
   }`;
-  if(!html.includes(oldSeason)) throw new Error('Season logic changed upstream; refusing an unsafe patch.');
+  if(!html.includes(oldSeason))throw new Error('The source module changed its season logic; no unsafe patch was applied.');
   html=html.replace(oldSeason,fixedSeason);
-  const oldCurrent="return (se && se.eps) ? se.eps : (cur.eps||[]);";
-  html=html.replace(oldCurrent,"return (se && se.eps) ? sortEpisodes(se.eps) : sortEpisodes(cur.eps||[]);");
+  html=html.replace("return (se && se.eps) ? se.eps : (cur.eps||[]);","return (se && se.eps) ? sortEpisodes(se.eps) : sortEpisodes(cur.eps||[]);");
+  html=html.replace("var en=(s.eps&&s.eps.length)||0;","var en=seasonList(s).reduce(function(total,se){return total+((se.eps&&se.eps.length)||0);},0);");
   status.remove();
   document.open();document.write(html);document.close();
- }catch(e){status.textContent='YUKI could not load: '+e.message;status.style.color='#fb7185';}
+ }catch(e){status.textContent='Yuki could not load: '+e.message;status.style.color='#fb7185';}
 })();
 </script>
 </body>
